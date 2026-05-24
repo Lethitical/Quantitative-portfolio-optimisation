@@ -1,45 +1,59 @@
 # Quantitative Portfolio Optimisation
 
-## Overview
+Mean-variance portfolio optimisation across 50 S&P 500 constituents (2019–2024).
+Simulates 5,000 random portfolios, plots the efficient frontier, and identifies
+the maximum Sharpe ratio portfolio.
 
-This project implements a mean-variance portfolio optimisation model using Python.
+## What It Does
 
-Using historical data from 50 S&P 500 companies (2019–2024), the script:
-
-- Calculates stock returns and covariance
-- Simulates 5000 random portfolios
-- Computes return, volatility, and Sharpe ratio
-- Identifies the optimal portfolio
-- Visualises the Efficient Frontier
+1. Downloads 5 years of price data for 50 S&P 500 stocks via `yfinance`
+2. Computes historical returns and the covariance matrix
+3. Runs a Monte Carlo simulation of 5,000 randomly weighted portfolios
+4. Calculates annualised return, volatility, and Sharpe ratio for each
+5. Identifies the maximum Sharpe ratio and minimum variance portfolios
+6. Plots the efficient frontier with portfolios colour-mapped by Sharpe ratio
 
 ## Methodology
 
-Portfolio performance is calculated using:
+Each simulated portfolio is evaluated on:
 
-Expected Return
+$$R_p = \mathbf{w}^\top \boldsymbol{\mu}$$
 
-R_p = w^T μ
+$$\sigma_p = \sqrt{\mathbf{w}^\top \boldsymbol{\Sigma} \mathbf{w}}$$
 
-Portfolio Volatility
+$$\text{Sharpe} = \frac{R_p - r_f}{\sigma_p}$$
 
-σ_p = sqrt(w^T Σ w)
-
-Where:
-
-- w = portfolio weights
-- μ = mean returns
-- Σ = covariance matrix
+| Symbol | Meaning |
+|--------|---------|
+| $\mathbf{w}$ | Portfolio weight vector |
+| $\boldsymbol{\mu}$ | Vector of mean annualised returns |
+| $\boldsymbol{\Sigma}$ | Covariance matrix of returns |
+| $r_f$ | Risk-free rate (US 10Y Treasury) |
 
 ## Results
 
-The optimal portfolio achieved a higher Sharpe ratio than the S&P 500 benchmark.
+| Portfolio | Annualised Return | Volatility | Sharpe Ratio |
+|-----------|-------------------|------------|--------------|
+| Max Sharpe | [x]% | [x]% | [x] |
+| Min Variance | [x]% | [x]% | [x] |
+| S&P 500 benchmark | ~15% | ~17% | ~0.88 |
 
-## Libraries Used
+## Limitations & Extensions
 
-- NumPy
-- Pandas
-- Matplotlib
-- yfinance
-- SciPy
+Monte Carlo simulation converges on good portfolios but doesn't guarantee
+the true optimum. Natural extensions include:
 
-## How to Run
+- **Scipy optimisation**: direct maximisation of Sharpe ratio using
+  `scipy.optimize.minimize` for an exact solution
+- **Constraints**: sector caps, position limits, no-short-selling
+- **Shrinkage estimators**: Ledoit-Wolf covariance shrinkage to reduce
+  estimation error on the covariance matrix with limited data
+- **Rolling window**: re-optimise quarterly to account for non-stationarity
+
+## Stack
+
+`numpy` · `pandas` · `scipy` · `matplotlib` · `yfinance`
+
+## Run
+
+```bash
