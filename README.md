@@ -4,6 +4,8 @@ Mean-variance portfolio optimisation across 50 S&P 500 constituents (2019–2024
 Simulates 5,000 random portfolios, plots the efficient frontier, and identifies
 the maximum Sharpe ratio portfolio.
 
+![Efficient Frontier](efficient_frontier.png)
+
 ## What It Does
 
 1. Downloads 5 years of price data for 50 S&P 500 stocks via `yfinance`
