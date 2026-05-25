@@ -34,10 +34,8 @@ $$\text{Sharpe} = \frac{R_p - r_f}{\sigma_p}$$
 
 | Portfolio | Annualised Return | Volatility | Sharpe Ratio |
 |-----------|-------------------|------------|--------------|
-| Max Sharpe | [x]% | [x]% | [x] |
-| Min Variance | [x]% | [x]% | [x] |
+| Max Sharpe | 26.89% | 22.29% | 1.21 |
 | S&P 500 benchmark | ~15% | ~17% | ~0.88 |
-
 ## Limitations & Extensions
 
 Monte Carlo simulation converges on good portfolios but doesn't guarantee
