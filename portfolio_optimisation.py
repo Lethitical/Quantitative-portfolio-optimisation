@@ -4,6 +4,22 @@ import matplotlib.pyplot as plt
 import yfinance as yf
 from scipy.optimize import minimize
 
+def optimise(mean_returns, cov_matrix):
+    n = len(mean_returns)
+
+    def neg_sharpe(weights):
+        ret = np.dot(weights, mean_returns)
+        vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+        return -ret / vol
+
+    constraints = ({'type': 'eq', 'fun': lambda x: np.sum(x) - 1},)
+    bounds = tuple((0, 1) for _ in range(n))
+    start = n * [1. / n]
+
+    result = minimize(neg_sharpe, start, method='SLSQP',
+                      bounds=bounds, constraints=constraints)
+    return result.x
+
 # -----------------------------
 # STEP 1 — Define Stock Universe
 # -----------------------------
@@ -199,12 +215,16 @@ print("\nDownloading S&P 500 benchmark...")
 sp500 = yf.download('^GSPC', start='2019-01-01', end='2024-01-01')['Close']
 
 sp_returns = sp500.pct_change().dropna()
-
-sp_return = sp_returns.mean()*252
-sp_vol = sp_returns.std()*np.sqrt(252)
+sp_return = (sp_returns.mean() * 252).item()
+sp_vol = (sp_returns.std() * np.sqrt(252)).item()
 
 print("\nS&P 500 Performance")
 
 print(f"Annual Return: {sp_return:.2%}")
 print(f"Volatility: {sp_vol:.2%}")
 print(f"Sharpe Ratio: {(sp_return/sp_vol):.2f}")
+
+
+w = optimise(mean_returns, cov_matrix)
+print("Optimised weights:", w)
+print("Sharpe:", np.dot(w, mean_returns) / np.sqrt(w.T @ cov_matrix @ w))
