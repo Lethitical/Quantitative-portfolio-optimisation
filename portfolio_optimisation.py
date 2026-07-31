@@ -264,3 +264,13 @@ print("Number of out-of-sample days:", len(oos))
 
 oos = walk_forward(returns, 252, 63)
 print("Out-of-sample days collected:", len(oos))
+import numpy as np
+oos = np.array(oos)                          # make sure it's a numpy array
+oos_sharpe = (oos.mean() / oos.std()) * np.sqrt(252)
+print("Out-of-sample Sharpe:", oos_sharpe)
+
+
+import numpy as np
+oos = np.array(oos)                          # make sure it's a numpy array
+oos_sharpe = (oos.mean() / oos.std()) * np.sqrt(252)
+print("Out-of-sample Sharpe:", oos_sharpe)
