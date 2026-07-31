@@ -5,7 +5,8 @@ import yfinance as yf
 from scipy.optimize import minimize
 
 
-def walk_forward(returns, train_window, test_window):
+# EDIT 1: added cov_estimator parameter
+def walk_forward(returns, train_window, test_window, cov_estimator):
     oos_returns = []          # out-of-sample daily returns we collect
 
     start = 0
@@ -18,13 +19,12 @@ def walk_forward(returns, train_window, test_window):
 
         # 3. estimate inputs from TRAIN ONLY
         mean_returns = train.mean() * 252
-        cov_matrix = train.cov() * 252
+        cov_matrix = cov_estimator(train) * 252      # EDIT 2: swappable estimator
 
         # 4. optimise on train
         weights = optimise(mean_returns, cov_matrix)
 
         # 5. apply frozen weights to the TEST window, record daily returns
-        #    <-- YOU WRITE THIS LINE
         daily_oos = test @ weights
         oos_returns.extend(daily_oos)
 
@@ -32,6 +32,12 @@ def walk_forward(returns, train_window, test_window):
         start = start + test_window
 
     return oos_returns
+
+
+# EDIT 3: the plain sample covariance estimator
+def sample_cov(train):
+    return train.cov()
+
 
 def optimise(mean_returns, cov_matrix):
     n = len(mean_returns)
@@ -48,6 +54,7 @@ def optimise(mean_returns, cov_matrix):
     result = minimize(neg_sharpe, start, method='SLSQP',
                       bounds=bounds, constraints=constraints)
     return result.x
+
 
 # -----------------------------
 # STEP 1 — Define Stock Universe
@@ -253,24 +260,19 @@ print(f"Annual Return: {sp_return:.2%}")
 print(f"Volatility: {sp_vol:.2%}")
 print(f"Sharpe Ratio: {(sp_return/sp_vol):.2f}")
 
+# -----------------------------
+# STEP 9 — In-sample solver check
+# -----------------------------
 
 w = optimise(mean_returns, cov_matrix)
-print("Optimised weights:", w)
-print("Sharpe:", np.dot(w, mean_returns) / np.sqrt(w.T @ cov_matrix @ w))
+print("\nIn-sample Sharpe:", np.dot(w, mean_returns) / np.sqrt(w.T @ cov_matrix @ w))
 
-oos = walk_forward(returns, 252, 63)
-print("Number of out-of-sample days:", len(oos))
+# -----------------------------
+# STEP 10 — Walk-forward backtest (out-of-sample)
+# -----------------------------
 
+oos = walk_forward(returns, 252, 63, sample_cov)
+oos = np.array(oos)
 
-oos = walk_forward(returns, 252, 63)
 print("Out-of-sample days collected:", len(oos))
-import numpy as np
-oos = np.array(oos)                          # make sure it's a numpy array
-oos_sharpe = (oos.mean() / oos.std()) * np.sqrt(252)
-print("Out-of-sample Sharpe:", oos_sharpe)
-
-
-import numpy as np
-oos = np.array(oos)                          # make sure it's a numpy array
-oos_sharpe = (oos.mean() / oos.std()) * np.sqrt(252)
-print("Out-of-sample Sharpe:", oos_sharpe)
+print("Out-of-sample Sharpe:", (oos.mean() / oos.std()) * np.sqrt(252))
