@@ -5,42 +5,63 @@ import yfinance as yf
 from scipy.optimize import minimize
 from sklearn.covariance import LedoitWolf
 
-# EDIT 1: added cov_estimator parameter
-def walk_forward(returns, train_window, test_window, cov_estimator):
-    oos_returns = []          # out-of-sample daily returns we collect
 
-    start = 0
-    while start + train_window + test_window <= len(returns):
-        # 1. slice the training window
-        train = returns.iloc[start : start + train_window]
+# =============================
+# COVARIANCE ESTIMATORS
+# =============================
 
-        # 2. slice the test window (the UNSEEN future)
-        test = returns.iloc[start + train_window : start + train_window + test_window]
-
-        # 3. estimate inputs from TRAIN ONLY
-        mean_returns = train.mean() * 252
-        cov_matrix = cov_estimator(train) * 252      # EDIT 2: swappable estimator
-
-        # 4. optimise on train
-        weights = optimise(mean_returns, cov_matrix)
-
-        # 5. apply frozen weights to the TEST window, record daily returns
-        daily_oos = test @ weights
-        oos_returns.extend(daily_oos)
-
-        # 6. roll forward
-        start = start + test_window
-
-    return oos_returns
-
-
-# EDIT 3: the plain sample covariance estimator
 def sample_cov(train):
+    """Plain historical sample covariance — noisy baseline."""
     return train.cov()
 
+
 def ledoit_wolf_cov(train):
+    """Shrinks noisy sample covariance toward a stable target."""
     lw = LedoitWolf().fit(train)
     return pd.DataFrame(lw.covariance_, index=train.columns, columns=train.columns)
+
+
+def mp_cov(train):
+    """Marchenko-Pastur eigenvalue cleaning: strip eigenvalues
+    indistinguishable from random noise, keep genuine signal."""
+    # 1. MP theory is defined on correlations, not covariances
+    corr = train.corr()
+
+    # 2. decompose: eigenvectors = directions of co-movement,
+    #    eigenvalues = how much variance sits in each direction
+    eigenvalues, eigenvectors = np.linalg.eigh(corr)
+
+    # 3. MP noise threshold: with pure random data, eigenvalues
+    #    would still spread up to (1 + sqrt(q))^2
+    T, N = train.shape
+    q = N / T
+    lambda_max = (1 + np.sqrt(q)) ** 2
+
+    # 4. anything below the threshold is indistinguishable from noise
+    is_noise = eigenvalues < lambda_max
+
+    # 5. replace noise eigenvalues with their average
+    #    (average, not zero, to preserve the trace = total variance)
+    cleaned = eigenvalues.copy()
+    cleaned[is_noise] = eigenvalues[is_noise].mean()
+
+    # 6. rebuild the correlation matrix from cleaned eigenvalues
+    clean_corr = eigenvectors @ np.diag(cleaned) @ eigenvectors.T
+
+    # 7. force the diagonal back to exactly 1
+    d = np.sqrt(np.diag(clean_corr))
+    clean_corr = clean_corr / np.outer(d, d)
+
+    # 8. correlation -> covariance by restoring each stock's scale
+    stds = train.std().values
+    clean_cov = clean_corr * np.outer(stds, stds)
+
+    return pd.DataFrame(clean_cov, index=train.columns, columns=train.columns)
+
+
+# =============================
+# OPTIMISER + BACKTEST ENGINE
+# =============================
 
 def optimise(mean_returns, cov_matrix):
     n = len(mean_returns)
@@ -57,6 +78,39 @@ def optimise(mean_returns, cov_matrix):
     result = minimize(neg_sharpe, start, method='SLSQP',
                       bounds=bounds, constraints=constraints)
     return result.x
+
+
+def walk_forward(returns, train_window, test_window, cov_estimator):
+    oos_returns = []          # out-of-sample daily returns we collect
+
+    start = 0
+    while start + train_window + test_window <= len(returns):
+        # 1. slice the training window
+        train = returns.iloc[start : start + train_window]
+
+        # 2. slice the test window (the UNSEEN future)
+        test = returns.iloc[start + train_window : start + train_window + test_window]
+
+        # 3. estimate inputs from TRAIN ONLY — no look-ahead
+        mean_returns = train.mean() * 252
+        cov_matrix = cov_estimator(train) * 252
+
+        # 4. optimise on train
+        weights = optimise(mean_returns, cov_matrix)
+
+        # 5. apply frozen weights to the TEST window
+        daily_oos = test @ weights
+        oos_returns.extend(daily_oos)
+
+        # 6. roll forward
+        start = start + test_window
+
+    return oos_returns
+
+
+def oos_sharpe(oos):
+    oos = np.array(oos)
+    return (oos.mean() / oos.std()) * np.sqrt(252)
 
 
 # -----------------------------
@@ -132,7 +186,7 @@ for i in range(num_portfolios):
 print("Simulation complete.")
 
 # -----------------------------
-# STEP 5 — Find Optimal Portfolio
+# STEP 5 — Find Optimal Portfolio (random search baseline)
 # -----------------------------
 
 max_sharpe_idx = results[2].argmax()
@@ -156,22 +210,15 @@ print(f"Sharpe Ratio: {results[2,max_sharpe_idx]:.2f}")
 # -----------------------------
 
 def portfolio_volatility(weights):
-
     return np.sqrt(
         np.dot(weights.T, np.dot(cov_matrix, weights))
     )
 
 def portfolio_return(weights):
-
     return np.dot(weights, mean_returns)
 
 def minimise_volatility(weights):
-
     return portfolio_volatility(weights)
-
-constraints = (
-    {'type':'eq','fun': lambda x: np.sum(x)-1}
-)
 
 bounds = tuple((0,1) for _ in range(num_stocks))
 
@@ -271,15 +318,17 @@ w = optimise(mean_returns, cov_matrix)
 print("\nIn-sample Sharpe:", np.dot(w, mean_returns) / np.sqrt(w.T @ cov_matrix @ w))
 
 # -----------------------------
-# STEP 10 — Walk-forward backtest (out-of-sample)
+# STEP 10 — Walk-forward comparison of covariance estimators
 # -----------------------------
 
-oos = walk_forward(returns, 252, 63, sample_cov)
-oos = np.array(oos)
+print("\nRunning walk-forward backtests (this takes a couple of minutes)...")
 
-print("Out-of-sample days collected:", len(oos))
-print("Out-of-sample Sharpe:", (oos.mean() / oos.std()) * np.sqrt(252))
+results_table = {
+    "Sample covariance": oos_sharpe(walk_forward(returns, 252, 63, sample_cov)),
+    "Ledoit-Wolf":       oos_sharpe(walk_forward(returns, 252, 63, ledoit_wolf_cov)),
+    "Marchenko-Pastur":  oos_sharpe(walk_forward(returns, 252, 63, mp_cov)),
+}
 
-oos_lw = walk_forward(returns, 252, 63, ledoit_wolf_cov)
-oos_lw = np.array(oos_lw)
-print("Ledoit-Wolf OOS Sharpe:", (oos_lw.mean() / oos_lw.std()) * np.sqrt(252))
+print("\n--- Out-of-sample Sharpe by covariance estimator ---")
+for name, sharpe in results_table.items():
+    print(f"{name:20s}: {sharpe:.3f}")
