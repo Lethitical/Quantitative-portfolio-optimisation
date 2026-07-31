@@ -4,6 +4,35 @@ import matplotlib.pyplot as plt
 import yfinance as yf
 from scipy.optimize import minimize
 
+
+def walk_forward(returns, train_window, test_window):
+    oos_returns = []          # out-of-sample daily returns we collect
+
+    start = 0
+    while start + train_window + test_window <= len(returns):
+        # 1. slice the training window
+        train = returns.iloc[start : start + train_window]
+
+        # 2. slice the test window (the UNSEEN future)
+        test = returns.iloc[start + train_window : start + train_window + test_window]
+
+        # 3. estimate inputs from TRAIN ONLY
+        mean_returns = train.mean() * 252
+        cov_matrix = train.cov() * 252
+
+        # 4. optimise on train
+        weights = optimise(mean_returns, cov_matrix)
+
+        # 5. apply frozen weights to the TEST window, record daily returns
+        #    <-- YOU WRITE THIS LINE
+        daily_oos = test @ weights
+        oos_returns.extend(daily_oos)
+
+        # 6. roll forward
+        start = start + test_window
+
+    return oos_returns
+
 def optimise(mean_returns, cov_matrix):
     n = len(mean_returns)
 
@@ -228,3 +257,10 @@ print(f"Sharpe Ratio: {(sp_return/sp_vol):.2f}")
 w = optimise(mean_returns, cov_matrix)
 print("Optimised weights:", w)
 print("Sharpe:", np.dot(w, mean_returns) / np.sqrt(w.T @ cov_matrix @ w))
+
+oos = walk_forward(returns, 252, 63)
+print("Number of out-of-sample days:", len(oos))
+
+
+oos = walk_forward(returns, 252, 63)
+print("Out-of-sample days collected:", len(oos))
