@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
 from scipy.optimize import minimize
-
+from sklearn.covariance import LedoitWolf
 
 # EDIT 1: added cov_estimator parameter
 def walk_forward(returns, train_window, test_window, cov_estimator):
@@ -38,6 +38,9 @@ def walk_forward(returns, train_window, test_window, cov_estimator):
 def sample_cov(train):
     return train.cov()
 
+def ledoit_wolf_cov(train):
+    lw = LedoitWolf().fit(train)
+    return pd.DataFrame(lw.covariance_, index=train.columns, columns=train.columns)
 
 def optimise(mean_returns, cov_matrix):
     n = len(mean_returns)
@@ -276,3 +279,7 @@ oos = np.array(oos)
 
 print("Out-of-sample days collected:", len(oos))
 print("Out-of-sample Sharpe:", (oos.mean() / oos.std()) * np.sqrt(252))
+
+oos_lw = walk_forward(returns, 252, 63, ledoit_wolf_cov)
+oos_lw = np.array(oos_lw)
+print("Ledoit-Wolf OOS Sharpe:", (oos_lw.mean() / oos_lw.std()) * np.sqrt(252))
