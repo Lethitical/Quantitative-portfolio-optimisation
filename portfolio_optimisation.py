@@ -327,22 +327,66 @@ print(f"Sharpe Ratio: {(sp_return/sp_vol):.2f}")
 # -----------------------------
 # STEP 9 — In-sample solver check
 # -----------------------------
+# -----------------------------
+# STEP 9 — Data diagnostics
+# -----------------------------
 
-w = optimise(mean_returns, cov_matrix)
-print("\nIn-sample Sharpe:", np.dot(w, mean_returns) / np.sqrt(w.T @ cov_matrix @ w))
+print("\n--- Data diagnostics ---")
+print(f"yfinance version: {yf.__version__}")
+print(f"Raw price rows:   {data.shape[0]}")
+print(f"Return rows kept: {returns.shape[0]}  (lost {data.shape[0] - 1 - returns.shape[0]} to dropna)")
+print(f"Assets:           {returns.shape[1]}")
+print(f"Date range:       {returns.index[0].date()} to {returns.index[-1].date()}")
 
 # -----------------------------
-# STEP 10 — Walk-forward comparison of covariance estimators
+# STEP 10 — In-sample solver check
 # -----------------------------
+
+w_is = optimise(mean_returns, cov_matrix)
+is_sharpe = np.dot(w_is, mean_returns) / np.sqrt(w_is.T @ cov_matrix @ w_is)
+print(f"\nIn-sample Sharpe (full period, no rf): {is_sharpe:.3f}")
+
+# -----------------------------
+# STEP 11 — Walk-forward comparison
+# -----------------------------
+
+TRAIN_WINDOW = 252
+TEST_WINDOW = 63
+
+n_folds = (len(returns) - TRAIN_WINDOW - TEST_WINDOW) // TEST_WINDOW + 1
+n_oos_days = n_folds * TEST_WINDOW
+q = returns.shape[1] / TRAIN_WINDOW
+
+print(f"\nWalk-forward setup")
+print(f"  Train window:      {TRAIN_WINDOW} days")
+print(f"  Test window:       {TEST_WINDOW} days")
+print(f"  Folds:             {n_folds}")
+print(f"  Out-of-sample obs: {n_oos_days} days")
+print(f"  q = N/T:           {q:.3f}   (MP threshold = {(1 + np.sqrt(q))**2:.3f})")
 
 print("\nRunning walk-forward backtests (this takes a couple of minutes)...")
 
 results_table = {
-    "Sample covariance": oos_sharpe(walk_forward(returns, 252, 63, sample_cov)),
-    "Ledoit-Wolf":       oos_sharpe(walk_forward(returns, 252, 63, ledoit_wolf_cov)),
-    "Marchenko-Pastur":  oos_sharpe(walk_forward(returns, 252, 63, mp_cov)),
+    "1/N (equal weight)": oos_sharpe(equal_weight(returns, TRAIN_WINDOW, TEST_WINDOW)),
+    "Sample covariance":  oos_sharpe(walk_forward(returns, TRAIN_WINDOW, TEST_WINDOW, sample_cov)),
+    "Ledoit-Wolf":        oos_sharpe(walk_forward(returns, TRAIN_WINDOW, TEST_WINDOW, ledoit_wolf_cov)),
+    "Marchenko-Pastur":   oos_sharpe(walk_forward(returns, TRAIN_WINDOW, TEST_WINDOW, mp_cov)),
 }
 
-print("\n--- Out-of-sample Sharpe by covariance estimator ---")
+# Approximate standard error on an annualised Sharpe estimated from n_oos_days
+# observations (Lo 2002, iid case): se ~= sqrt((1 + S^2/2) / n) * sqrt(252)
+mean_sharpe = np.mean(list(results_table.values()))
+se = np.sqrt((1 + mean_sharpe**2 / 2) / n_oos_days) * np.sqrt(252)
+
+print("\n--- Out-of-sample Sharpe by estimator ---")
 for name, sharpe in results_table.items():
-    print(f"{name:20s}: {sharpe:.3f}")
+    print(f"  {name:20s}: {sharpe:.3f}")
+
+best = max(results_table, key=results_table.get)
+spread = max(results_table.values()) - min(results_table.values())
+
+print(f"\n  Approx. standard error: +/- {se:.3f}")
+print(f"  Spread (best - worst):  {spread:.3f}")
+print(f"  Best: {best}")
+print(f"  Spread is {spread/se:.2f} standard errors "
+      f"-> {'possibly meaningful' if spread > 2*se else 'NOT distinguishable from noise'}")

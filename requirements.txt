@@ -1,5 +1,6 @@
 numpy
 pandas
-scipy
 matplotlib
+scipy
+scikit-learn
 yfinance
