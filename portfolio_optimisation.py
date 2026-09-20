@@ -113,6 +113,20 @@ def oos_sharpe(oos):
     return (oos.mean() / oos.std()) * np.sqrt(252)
 
 
+def equal_weight(returns, train_window, test_window):
+    """1/N benchmark. Identical walk-forward splits to walk_forward(),
+    but no estimation at all — weights are fixed and never updated."""
+    oos_returns = []
+    weights = np.ones(returns.shape[1]) / returns.shape[1]
+
+    start = 0
+    while start + train_window + test_window <= len(returns):
+        test = returns.iloc[start + train_window : start + train_window + test_window]
+        oos_returns.extend(test @ weights)
+        start = start + test_window
+
+    return oos_returns
+
 # -----------------------------
 # STEP 1 — Define Stock Universe
 # -----------------------------
